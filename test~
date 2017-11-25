@@ -1,6 +1,0 @@
-start:
-	mov ax,22h
-	mov bx,5h
-	xchg ax,bx
-times 510-($-$$) db 0	; Fill up the file with zeros
-dw 0AA55h		; Boot sector identifyer

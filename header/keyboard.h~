@@ -1,8 +1,0 @@
-#ifndef KEYBOARD_H
-#define KEYBOARD_H
-
-void initKeyboard();
-//uint8_t getch();
-//void gets(char *);
-//uint8_t kbhit();
-#endif
