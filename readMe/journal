@@ -1,0 +1,11 @@
+bootloader:
+	the bootloader has bootsignature at the 2nd last byte. It is two bytes long. Boot signature or boot checksum
+	is 0xaa55. the bootloader executes commands in real mode. prepares the environment for 32 bit kernel.
+	uzi has a bootloader that loads a loader program into memory. loader program is the second stage bootloader.
+	loader program loades our 32 bit kernel.
+
+	bpb: bios parameter block starts 3 bytes from the start memory 0x7c00. 3 bytes long 'jmp to bootstrap'
+		instruction. then 11 bytes long OEM name in text. followed by bpb description which 25 bytes long.
+		then follows 26 bytes long extended bpb if there is one.
+	bootstrap: aka bootcode. after the bpb, next what follows is the bootcode. which can be of length 448.
+			lengthOfBootCode=(512 bytes-2 bytes (bootsignature) - bpbLength).

@@ -1,0 +1,20 @@
+all: bootloader.img
+projName=uzi3
+bootloader.img: bootloader.bin krnldr.sys
+	cat /home/farhan/Desktop/myOS_UZI/$(projName)/boot/bootloader.bin /dev/zero | dd bs=512 count=2880 of=/home/farhan/Desktop/myOS_UZI/$(projName)/boot/bootloader.img
+	@rm /home/farhan/Desktop/myOS_UZI/$(projName)/boot/bootloader.bin
+	sudo losetup /dev/loop0 /home/farhan/Desktop/myOS_UZI/$(projName)/boot/bootloader.img
+	sudo rm -rf /mnt/floppy	
+	sudo mkdir /mnt/floppy
+	sudo mount /dev/loop0 /mnt/floppy
+	 sudo cp /home/farhan/Desktop/myOS_UZI/$(projName)/boot/krnldr.sys /mnt/floppy
+	 sudo cp /home/farhan/Desktop/myOS_UZI/$(projName)/kernel.sys /mnt/floppy
+	sleep 0.2
+	#@rm /home/farhan/Desktop/myOS_UZI/$(projName)/boot/bootloader.img
+	#@rm /home/farhan/Desktop/myOS_UZI/$(projName)/boot/krnldr.sys
+	#@rm /home/farhan/Desktop/myOS_UZI/$(projName)/kernel.sys
+
+bootloader.bin:
+	nasm -f bin /home/farhan/Desktop/myOS_UZI/$(projName)/boot/bootloader.asm -o /home/farhan/Desktop/myOS_UZI/$(projName)/boot/bootloader.bin
+krnldr.sys:
+	nasm -f bin /home/farhan/Desktop/myOS_UZI/$(projName)/boot/krnldr.asm -o /home/farhan/Desktop/myOS_UZI/$(projName)/boot/krnldr.sys

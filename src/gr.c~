@@ -1,0 +1,165 @@
+#include"/home/farhan/Desktop/myOS_UZI/uzi1/header/stdtype.h"
+#include"/home/farhan/Desktop/myOS_UZI/uzi1/header/stdgr.h"
+
+uint16_t charAttribute;
+uint8_t xCursor=0,yCursor=0;
+uint16_t *vidMem = (uint16_t *)0xB8000; 		/* pointer to video memory */
+
+//background color
+void setBkgColor(uint8_t color){
+	charAttribute=0x0000;
+	charAttribute|=color<<12;
+}
+
+//foreground color
+void setCharColor(uint8_t color){
+	charAttribute|=color<<8;
+}
+
+void gotoXY(uint8_t x,uint8_t y){
+	if(xCursor<=80) xCursor=x;
+	if(yCursor<=25) yCursor=y;
+}
+
+void clearScreen(){
+	gotoXY(0,0);
+	int i;
+	for(i=0;i<SCREEN_MAX_CHAR;++i){		
+    		putc(' ');
+	}
+	gotoXY(0,0);
+}
+
+void putc(uint8_t ch){
+	uint16_t *pos;
+	uint16_t i;
+	if(ch=='\n'){
+		xCursor=0;
+		yCursor++;
+	}
+	else if(ch>=' '){
+		pos=vidMem+(yCursor*SCREEN_WIDTH+xCursor);	//offset: yCursor*SCREEN_WIDTH+xCursor relative to vidMem(base address)
+		*pos=ch|charAttribute;
+		xCursor++;
+		if(xCursor>=80){
+			xCursor=0;
+			yCursor++;
+		}
+	}
+	/**else if(yCursor>24){
+		for(i=0;i<24*80;i++){
+			vidMem[i]=vidMem[i+80];
+		}
+		vidMem[24*80]=' ';
+		yCursor=24;
+	}**/
+	updateCursor(yCursor,xCursor);
+}
+
+void puts(char *msg){
+	while(*msg) putc(*msg++);
+}
+
+void updateCursor(uint8_t y,uint8_t x){
+	uint16_t  location;
+	uint16_t  port;
+	uint8_t   data;
+
+	location=(x+y*SCREEN_WIDTH);
+//set current cursor position
+	port=0x03D4;
+	data=0x0f;
+	outputPort8(port,data);
+	port=0x03D5;
+	data=(uint8_t)location;
+	outputPort8(port,data);
+	
+	port=0x03D4;
+	data=0x0e;
+	outputPort8(port,data);
+	port=0x03D5;
+	data=(uint8_t)(location>>8);
+	outputPort8(port,data);
+}
+
+void putcXY(uint8_t ch,uint8_t x,uint8_t y){
+	gotoXY(x,y);
+	putc(ch);
+}
+
+void putsXY(char *msg,uint8_t x,uint8_t y){
+	gotoXY(x,y);
+	puts(msg);
+}
+
+void puts_hex(uint32_t n)
+{
+    int32_t tmp;
+
+    puts("0x");
+
+    char noZeroes = 1;
+
+    int i;
+    for (i = 28; i > 0; i -= 4)
+    {
+        tmp = (n >> i) & 0xF;
+        if (tmp == 0 && noZeroes != 0)
+        {
+            continue;
+        }
+    
+        if (tmp >= 0xA)
+        {
+            noZeroes = 0;
+            putc(tmp-0xA+'a' );
+        }
+        else
+        {
+            noZeroes = 0;
+            putc( tmp+'0' );
+        }
+    }
+  
+    tmp = n & 0xF;
+    if (tmp >= 0xA)
+    {
+        putc(tmp-0xA+'a');
+    }
+    else
+    {
+        putc(tmp+'0');
+    }
+
+}
+
+void puts_dec(uint32_t n)
+{
+
+    if (n == 0)
+    {
+        putc('0');
+        return;
+    }
+
+    int32_t acc = n;
+    char c[32];
+    int i = 0;
+    while (acc > 0)
+    {
+        c[i] = '0' + acc%10;
+        acc /= 10;
+        i++;
+    }
+    c[i] = 0;
+
+    char c2[32];
+    c2[i--] = 0;
+    int j = 0;
+    while(i >= 0)
+    {
+        c2[i--] = c[j++];
+    }
+    puts(c2);
+
+}

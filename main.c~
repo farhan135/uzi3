@@ -1,0 +1,10 @@
+#include"stdgr.h"
+
+int main(){
+	setBkgColor(BLUE);
+	clearScreen();
+	setCharColor(RED);
+	puts("Hello Sherajam, im your love, \nfarhan\n");
+	for(;;);
+return 0;
+}

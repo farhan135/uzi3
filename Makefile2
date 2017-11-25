@@ -1,0 +1,47 @@
+all: kernel.sys 
+projName=uzi3
+kernel.sys: kernel.bin
+	# cat /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/kernel.bin /dev/zero | dd bs=512 count=2880 of=kernel.sys
+	cp /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/kernel.bin /home/farhan/Desktop/myOS_UZI/$(projName)/kernel.sys
+	@rm /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/*.bin
+	@rm /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/*.elf
+	
+loader.o: /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/loader.asm
+	@clear
+	nasm -f elf /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/loader.asm -o /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/loader.o
+
+gdt.o: /home/farhan/Desktop/myOS_UZI/$(projName)/src/gdt.asm
+	nasm -f elf //home/farhan/Desktop/myOS_UZI/$(projName)/src/gdt.asm -o /home/farhan/Desktop/myOS_UZI/$(projName)/src/gdt.o
+
+idt.o: /home/farhan/Desktop/myOS_UZI/$(projName)/src/idt.asm
+	nasm -f elf /home/farhan/Desktop/myOS_UZI/$(projName)/src/idt.asm -o /home/farhan/Desktop/myOS_UZI/$(projName)/src/idt.o
+
+interrupt.o : /home/farhan/Desktop/myOS_UZI/$(projName)/src/interrupt.asm
+	nasm -f elf /home/farhan/Desktop/myOS_UZI/$(projName)/src/interrupt.asm -o /home/farhan/Desktop/myOS_UZI/$(projName)/src/interrupt.o
+
+kernel.bin: kernel.elf
+	objcopy -R .note -R .comment -S -O binary /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/kernel.elf /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/kernel.bin
+
+kernel.elf: loader.o gdt.o idt.o interrupt.o /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/main.c
+	@echo "\ngcc:"
+	gcc -m32  -ffreestanding -fno-builtin -nostdlib -c /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/*.c /home/farhan/Desktop/myOS_UZI/$(projName)/src/*.c
+	@echo "\nlink:"
+	@mv /home/farhan/Desktop/myOS_UZI/$(projName)/main.o /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/main.o
+	@mv /home/farhan/Desktop/myOS_UZI/$(projName)/stdgr.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/stdgr.o
+	@mv /home/farhan/Desktop/myOS_UZI/$(projName)/descriptorTable.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/descriptorTable.o
+	@mv /home/farhan/Desktop/myOS_UZI/$(projName)/isr.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/isr.o
+	@mv /home/farhan/Desktop/myOS_UZI/$(projName)/pit.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/pit.o
+	@mv /home/farhan/Desktop/myOS_UZI/$(projName)/keyboard.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/keyboard.o
+	@mv /home/farhan/Desktop/myOS_UZI/$(projName)/time.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/time.o
+	@mv /home/farhan/Desktop/myOS_UZI/$(projName)/string.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/string.o
+
+	ld -melf_i386 -Ttext 0x100000 -o /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/kernel.elf /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/loader.o /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/main.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/stdgr.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/descriptorTable.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/gdt.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/idt.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/isr.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/interrupt.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/pit.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/keyboard.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/time.o /home/farhan/Desktop/myOS_UZI/$(projName)/src/string.o
+
+	# @rm /home/farhan/Desktop/myOS_UZI/$(projName)/boot/*.o
+	@rm /home/farhan/Desktop/myOS_UZI/$(projName)/kernel/*.o
+	@rm /home/farhan/Desktop/myOS_UZI/$(projName)/src/*.o
+
+test: uzi.img
+	#make
+	qemu-system-i386 -m 256 -boot a -fda uzi.img
+	#qemu-system-i386 -cpu pentium -boot a -fda uzi.img

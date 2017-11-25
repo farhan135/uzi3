@@ -1,0 +1,32 @@
+dd if=/dev/zero of=/home/farhan/Desktop/myOS_UZI/test2/floppy.img bs=512 count=2880
+
+sudo cp boot1.bin /dev/loop0
+or
+dd if=boot.bin of=MyOS.img bs=512 count=1 conv=notrunc status=noxfer
+dd if=start.bin of=MyOS.img bs=512 count=1 conv=notrunc seek=1 status=noxfer
+
+then 
+	mkdir /mnt/floppy
+	mount: mount /dev/loop0 -o loop /mnt/floppy
+	cp krnldr to /mnt/floppy
+
+sudo umount /mnt/floppy/
+sudo losetup -d /dev/loop0
+
+bochs -f bochsrc.txt
+
+//here is the solution
+	sudo losetup /dev/loop0 boot1.img
+	sudo mkdir /mnt/floppy
+	sudo mount /dev/loop0 /mnt/floppy
+
+	sudo cp boot2.sys or uzi.sys /mnt/floppy
+	;makefile1 has upto this
+	sudo umount /dev/loop0
+	sudo losetup -d /dev/loop0
+
+	then
+
+	sudo losetup /dev/loop0 boot1.img
+	sudo bochs -f bochsrc.txt
+	sudo losetup -d /dev/loop0

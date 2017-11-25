@@ -1,0 +1,264 @@
+[BITS 16]                       ; We need 16-bit intructions for Real mode
+
+[ORG 0x500]                    ; The BIOS loads the boot sector into memory location 0x7C00
+
+jmp load_kernel   	        ; Load the OS Kernel
+
+%include"/home/farhan/Desktop/myOS_UZI/uzi3/boot/gdt.inc"
+%include "/home/farhan/Desktop/myOS_UZI/uzi3/boot/A20.inc"
+
+load_kernel:
+        jmp enter_pm            ; Enter Protected Mode
+
+bpbOEM			db "My OS   "			; OEM identifier (Cannot exceed 8 bytes!)
+bpbBytesPerSector  	dw 512
+bpbSectorsPerCluster 	db 1
+bpbReservedSectors 	dw 1
+bpbNumberOfFATs 	db 2
+bpbRootEntries	 	dw 224
+bpbTotalSectors 	dw 2880
+bpbMedia 		db 0xf8  ;; 0xF1
+bpbSectorsPerFAT 	dw 9
+bpbSectorsPerTrack 	dw 18
+bpbNumOfHeads		dw 2
+bpbHiddenSectors 	dd 0
+bpbTotalSectorsBig	dd 0
+bpbDriveNumber		db 0
+bsUnused 		db 0
+bsExtBootSignature 	db 0x29
+bsSerialNumber	        dd 0xa0a1a2a3
+bsVolumeLabel 	        db "myOS_UZI   "
+bsFileSystem 	        db "FAT12   "
+
+
+print:
+	lodsb				; load next byte from string from SI to AL
+	or	al, al			; Does AL=0?
+	jz	printDone		; Yep, null terminator found-bail out
+	mov	ah, 0eh			; Nope-Print the character
+	int	10h
+	jmp	print			; Repeat until null terminator found
+printDone:
+	ret				; we are done, so return
+
+
+readSectors:
+	.mainLoop:
+		mov	di, 0x0005                          ; five retries for error
+		.sectorLoop:
+			push ax
+			push bx
+			push cx
+			call LBAtoCHS                              ; convert starting sector to CHS
+			mov  ah,0x02                            ; BIOS read sector
+			mov  al,0x01                            ; read one sector
+			mov  ch,BYTE [absoluteTrack]            ; track
+			mov  cl,BYTE [absoluteSector]           ; sector
+			mov  dh,BYTE [absoluteHead]             ; head
+			mov  dl,BYTE [bpbDriveNumber]            ; drive
+			int  0x13                                ; invoke BIOS
+			jnc  .success                            ; test for read error
+			xor  ax,ax                              ; BIOS reset disk
+			int  0x13                                ; invoke BIOS
+			dec  di                                  ; decrement error counter
+			pop  cx
+			pop  bx
+			pop  ax
+			jnz  .sectorLoop                         ; attempt to read again
+			int  0x18
+		.success:
+			mov  si,msgProgress
+			call print
+			pop  cx
+			pop  bx
+			pop  ax
+			add  bx,WORD[bpbBytesPerSector]		; queue next buffer
+			inc  ax					; queue next sector
+			loop .mainLoop				; read next sector
+ret
+
+clusterLBA:
+	sub ax,0x0002                          ; zero base cluster number
+	xor cx,cx
+	mov cl,BYTE [bpbSectorsPerCluster]     ; convert byte to word
+	mul cx
+	add ax,WORD [dataSector]               ; base data sector
+ret
+
+LBAtoCHS:
+	xor dx,dx                              ; prepare dx:ax for operation
+	div WORD[bpbSectorsPerTrack]           ; calculate
+	inc dl                                  ; adjust for sector 0
+	mov BYTE[absoluteSector],dl
+	xor dx,dx                              ; prepare dx:ax for operation
+	div WORD[bpbNumOfHeads]			; calculate
+	mov BYTE[absoluteHead],dl
+	mov BYTE[absoluteTrack],al
+ret
+
+enter_pm:        
+	cli
+	xor ax, ax  		; null segments
+	;mov ax, 0x1000
+	mov ds, ax
+	mov es, ax
+	mov ax, 0x9000          ; stack begins at 0x9000-0xffff
+	mov ss, ax
+	mov sp, 0xffff
+
+	call enableA20
+	call installGDT
+
+	sti
+	;works upto here
+
+	mov  si,msgLoading
+	call print
+
+	; Find kernel
+
+	loadRoot:
+
+		; compute size of root directory and store in "cx"
+		xor cx,cx
+		xor dx,dx
+		mov ax,0x0020                           ; 32 byte directory entry
+		mul WORD[bpbRootEntries]                ; total size of directory
+		div WORD[bpbBytesPerSector]             ; sectors used by directory
+		xchg ax,cx
+
+		; compute location of root directory and store in "ax"
+     
+		mov     al,BYTE[bpbNumberOfFATs]            ; number of FATs
+		mul     WORD[bpbSectorsPerFAT]               ; sectors used by FATs
+		add     ax,WORD[bpbReservedSectors]         ; adjust for bootsector
+		mov     WORD[dataSector],ax                 ; base of root directory
+		add     WORD[dataSector],cx
+
+		; read root directory into memory (7C00:0200)
+		mov  bx, 0x0000                            ; copy root dir above bootcode
+		call readSectors
+	; browse root directory for binary image
+	mov cx, WORD [bpbRootEntries]             ; load loop counter
+	mov di,0x0000
+	.loopHere:
+		push cx
+		mov  cx,0x000B                            ; eleven character name
+		mov  si,ImageName                         ; image name to find
+		push di
+		rep  cmpsb                                         ; test for entry match
+		pop  di
+		je   loadFat
+		pop  cx
+		add  di,0x0020                            ; queue next directory entry
+		loop .loopHere
+		jmp  failure
+
+	;load FAT
+	loadFat:
+		; save starting cluster of boot image
+		mov  si,msgCRLF
+		call print
+		mov  dx,WORD[di+0x001A]
+		mov  WORD[cluster],dx                  ; file's first cluster
+
+		; compute size of FAT and store in "cx"
+		xor  ax,ax
+		mov  al,BYTE[bpbNumberOfFATs]          ; number of FATs
+		mul  WORD[bpbSectorsPerFAT]             ; sectors used by FATs
+		mov  cx,ax
+
+		; compute location of FAT and store in "ax"
+		mov  ax,WORD[bpbReservedSectors]       ; adjust for bootsector
+
+		; read FAT into memory (7C00:0200)
+		mov  bx,0x0000
+		call readSectors
+
+		; read image file into memory (0000:1000)
+		mov  si,msgCRLF
+		call print
+		mov  ax,0x0000
+		mov  es,ax                              ; destination for image
+		mov  bx,0x1000                          ; destination for image
+		push bx
+
+	; Load Stage 2
+
+	loadImage:
+		mov  ax,WORD[cluster]                    ; cluster to read
+		pop  bx                                  ; buffer to read into
+		call clusterLBA                          ; convert cluster to LBA
+		xor  cx,cx
+		mov  cl,BYTE[bpbSectorsPerCluster]     ; sectors to read
+		call readSectors
+		push bx
+          
+	; compute next cluster
+	mov     ax,WORD[cluster]                   ; identify current cluster
+	mov     cx,ax                              ; copy current cluster
+	mov     dx,ax                              ; copy current cluster
+	shr     dx,0x0001                          ; divide by two
+	add     cx,dx                              ; sum for (3/2)
+	mov     bx,0x1000                          ; location of FAT in memory
+	add     bx,cx                              ; index into FAT
+	mov     dx,WORD[bx]                        ; read two bytes from FAT
+	test    ax,0x0001
+	jnz     .oddCluster
+
+	.evenCluster:
+		and     dx,0000111111111111b       ; take low twelve bits
+		jmp     .DONE
+
+	.oddCluster:
+		shr     dx,0x0004                  ; take high twelve bits
+
+	.DONE:
+		mov WORD[cluster],dx               ; store new cluster
+		cmp dx,0x0FF0                      ; test for end of file
+		jb  loadImage
+
+mov  si,msgDebug
+call print
+
+        
+;----------Entering Protected Mode----------;
+        cli    
+        mov eax, cr0            ; Copy the contents of CR0 into EAX
+        or eax, 1               ; Set bit 0 to enter pmode    (0xFE = Real Mode)
+        mov cr0, eax            ; Copy the contents of EAX into CR0
+        
+	; each descriptor in gdt is 8 bytes long. so code descriptor is at 0x08 offset right after null descriptor
+        jmp 08h:kernel_segments ; Jump to code segment, offset kernel_segments
+        
+
+[BITS 32]                       ; We now need 32-bit instructions
+kernel_segments:
+        mov ax, 10h             ; Save data segment identifyer
+        mov ds, ax              ; Move a valid data segment into the data segment register
+        mov ss, ax              ; Move a valid data segment into the stack segment register
+        mov esp, 090000h        ; Move the stack pointer to 090000h
+        
+        jmp 08h:0x1000          ; Jump to section 08h (code), offset 01000h i.e jmp to our kernel main()
+
+failure:
+		mov     si, msgFailure
+		call    print
+		mov     ah, 0x00
+		int     0x16                                ; await keypress
+		int     0x19                                ; warm boot computer
+
+absoluteSector	db	0x00
+absoluteHead	db	0x00
+absoluteTrack	db	0x00
+
+dataSector	dw	0x0000
+cluster		dw	0x0000
+
+ImageName	db	"KERNEL  SYS"	; 11 bits
+
+msgDebug	db	0x0D, 0x0A, "Debug:",0x00
+msgLoading	db	0x0D, 0x0A, "Loading kernel ", 0x0D, 0x0A, 0x00
+msgCRLF		db	0x0D, 0x0A, 0x00
+msgProgress	db	".", 0x00
+msgFailure	db	0x0D, 0x0A, "Error: Press Reboot", 0x0A, 0x00
